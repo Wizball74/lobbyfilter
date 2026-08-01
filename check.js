@@ -67,6 +67,41 @@ for (const file of ['content.js', 'inject.js']) {
     new RegExp('[{,\\n]\\s*' + id + '\\s*:').test(src) ||
     new RegExp("['\"]" + id + "['\"]\\s*:").test(src);
   const suspects = [...used].filter(([id]) => /^[A-Z][A-Z0-9_]*$/.test(id) && !isKey(id));
+
+  // Functions that are called but never defined. A refactor that deletes one
+  // block can take a neighbouring function with it; the result is valid
+  // syntax that throws on load.
+  const defined = new Set([...src.matchAll(/function\s+([A-Za-z_$][\w$]*)/g)].map(m => m[1]));
+  for (const m of src.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function|\()/g)) {
+    defined.add(m[1]);
+  }
+  for (const m of src.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\s*=>/g)) {
+    defined.add(m[1]);
+  }
+  // Function parameters count as defined — they are callable inside the body.
+  for (const m of src.matchAll(/function\s*[A-Za-z_$\w]*\s*\(([^)]*)\)/g)) {
+    for (const part of m[1].split(',')) {
+      const id = part.trim().replace(/[=:].*$/, '').trim();
+      if (/^[A-Za-z_$][\w$]*$/.test(id)) defined.add(id);
+    }
+  }
+  // Object-literal method shorthand: `construct(t, a) { … }`
+  for (const m of src.matchAll(/(?:^|[{,])\s*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/gm)) {
+    defined.add(m[1]);
+  }
+  const KNOWN_CALLS = new Set([
+    'if','for','while','switch','catch','return','typeof','function','require',
+    'eval','parseInt','parseFloat','String','Number','Boolean','Array','Object',
+    'JSON','Set','Map','RegExp','Date','setTimeout','setInterval','clearTimeout',
+    'clearInterval','fetch','Proxy','Promise','Error','isNaN','matchAll'
+  ]);
+  // Only look at call sites, and only outside comments and strings.
+  for (const m of code.matchAll(/(?<![.\w$])([a-z][A-Za-z0-9_$]*)\s*\(/g)) {
+    const id = m[1];
+    if (defined.has(id) || declared.has(id) || KNOWN_CALLS.has(id)) continue;
+    const line = code.slice(0, m.index).split('\n').length;
+    suspects.push([id + '()', line]);
+  }
   if (suspects.length) {
     bad += suspects.length;
     console.log(`\n${file}:`);
