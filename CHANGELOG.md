@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Average filter now reads the card's 5-step `35+` badge instead of the API
+  value: a lobby with a visible average is no longer marked "no details". The
+  control is a 5-step range (`10+` … `100+`) and matches if any player is in it
+- Lobbies with only bot players count as empty
+- Better badge reading: the `ATC`/`RTW` game types, combined `2S/2L` legs+sets
+  and `Bull-off (Official)` are recognised; bare numbers and bots are no longer
+  mistaken for player names
+- The "no details" marker explains itself with a hover tooltip
+- Fixed the Advanced button counting empty multi-selects as active filters, and
+  a crash when pressing Reset
+
 ## 1.0.0 — first release
 
 Filter bar above the Autodarts lobby list.

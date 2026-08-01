@@ -6,13 +6,15 @@ down to the games you actually want to play instead of scrolling past the rest.
 
 > Unofficial community project. Not built, endorsed or supported by Autodarts.
 
-![Simple View](lobby_x01_simple_view.jpeg)
-![Detailed View](lobby_x01_all_filters.jpeg)
+<!-- TODO: add a screenshot of the filter bar -->
 
 ## What it does
 
-**Filters** by game type, in and out mode, legs, sets, starting score (several
-at once), host average, country, referee and occupancy.
+**Filters** by game type, in and out mode, legs, sets, starting score, host
+average, country, referee and occupancy. Every one of those except legs and
+sets takes several values at once — Bermuda or Shanghai or Cricket, 301 or
+501, double or master out. "Seat free" means at
+most one player is in there — room to make it a one-on-one.
 
 **Hides abandoned lobbies** — the ones where not even the host is sitting in.
 Usually sessions someone walked away from; they help nobody.
@@ -70,7 +72,9 @@ node --check content.js && node --check inject.js && node check.js
 `check.js` catches identifiers that are used but never declared. `node --check`
 only validates syntax and lets exactly that mistake through.
 
-How it works internally: [ARCHITECTURE.md](ARCHITECTURE.md)
+How it works internally: [ARCHITECTURE.md](ARCHITECTURE.md) — and
+[HANDOFF.md](HANDOFF.md) for what is not in the code: what was tried, what
+broke, and what to watch out for.
 
 ## Layout
 
@@ -82,6 +86,7 @@ panel.css         Styling
 icons/            16, 32, 48, 128 px
 check.js          Lint script, not shipped
 pack.sh           Builds the store zip
+HANDOFF.md        Context for picking the project back up
 ```
 
 ## Licence

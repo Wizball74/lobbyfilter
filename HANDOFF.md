@@ -101,7 +101,14 @@ assert the target row never moves, sampling at 3, 10, 25 and 50 ms after each.
   markup.
 - `joinControl()` guesses which element joins a lobby: a link to `/lobbies/…`,
   else the first button in a card. **Never verified against the real site.**
-  This is why auto-join has a five second countdown.
+  This is why auto-join has a five second countdown, and why the freeze may
+  trigger on the wrong element or not at all.
+
+  Worth settling early, and now possible: with browser access, load the
+  unpacked extension, sign in, and inspect a lobby card's join control —
+  what element is it, does it carry an href, what does the surrounding markup
+  look like. Then pin `joinControl()` to that instead of guessing. Everything
+  in the freeze logic depends on it being right.
 - Badge vocabulary is a guess based on a handful of screenshots. Known
   oddities: `Tactics` and `Cricket No Score` mean Cricket without saying so.
   New mode names will read as `nodata`, which is the safe failure.

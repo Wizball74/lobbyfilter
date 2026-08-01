@@ -25,13 +25,17 @@ bull-off from these. This source is always complete — it is whatever the user
 can see.
 
 **2. The lobby objects from the site's API.** These carry what the cards do
-not show: host average, country, referee flag, exact player count,
-`maxPlayers`. Matched to a card by the lobby UUID in the markup, failing that
-by a host name that matches exactly one known lobby.
+not show as a badge: country, referee flag, exact player count, `maxPlayers`
+and, per player, the exact numeric average. Matched to a card by the lobby UUID
+in the markup, failing that by a host name that matches exactly one known lobby.
 
 If no API data arrives for a card, everything from source 1 still filters
-correctly. Only filters that need source 2 become undecidable — those cards
-stay visible, dimmed with a yellow bar, and the status line counts them.
+correctly — including the average, which is read from the card's own `35+`
+badge, not the API (see *Average*). Only the country and referee filters truly
+need source 2 and become undecidable without it. Those cards stay visible,
+dimmed with a yellow bar, and the status line counts them. The bar carries a
+`title` tooltip (`ttNoData`) so the marker explains itself on hover — an
+attribute, not a node, so the `childList` observer stays asleep.
 
 ## Three verdicts, not two
 
@@ -51,6 +55,36 @@ Related: when a non-X01 game type is selected, the points/in/out/bull controls
 grey out **and stop filtering**. Greying out a control while it still
 filters produces results nobody can explain.
 
+## Everything selectable is a multi-select
+
+Game type, starting score, in mode, out mode, bull mode and country all take
+several values at once. Nothing selected means no restriction — there is no
+separate "all" entry competing with the real values.
+
+Three shapes, chosen by list length:
+
+| Values | Control |
+|---|---|
+| 2–4, short labels | segmented row of keys (`segmented()`) |
+| 5–6, short labels | checkbox row (`checkboxSet()`) |
+| long or open-ended | dropdown holding checkboxes (`checkboxMenu()`) |
+
+## Game type is a multi-select
+
+A plain `<select>` cannot express "Bermuda or Shanghai or Cricket", and eleven
+loose checkboxes would be a wall of tiles in the main bar. `checkboxMenu()` is
+a dropdown holding checkboxes: the trigger stays as narrow as a select and
+shows the state — `all (11)`, `Cricket (2)`, or `3 game types`.
+
+Nothing ticked means all, same convention as the starting scores. Every variant
+stays listed even when none is open; the count next to it says how many are.
+
+Consequence for `x01Context()`: the X01-only controls grey out only when X01 is
+definitely excluded. "Cricket + X01" still needs the out mode.
+
+Country uses the same `checkboxMenu()` — the list is open-ended and grows with
+whatever hosts are online.
+
 ## Badge parsing
 
 Detection matches **words**, not whole badge texts. Autodarts combines settings
@@ -64,16 +98,50 @@ see it on the card rather than deducing it from the result.
 
 Names are distinguished from settings by capitalisation: card names are
 upper-case throughout, settings are not. A guest called `BERMUDA` is a name; a
-badge reading `Bermuda` is a game type.
+badge reading `Bermuda` is a game type. The exceptions are the acronym game
+types `ATC` and `RTW`, which are all-caps by nature — they are matched
+explicitly *before* the capitalisation rule, or an ATC-only lobby would read as
+having a player called "ATC" and never count as empty.
+
+Two more things that are deliberately **not** players: a bare number (a stray
+`1` leg/set count that reached the name step) and a CPU opponent (`BOT LEVEL 4`).
+Both are skipped, so a bot-only lobby reads as empty. The bot match is by name
+only and would miss a localised bot name; with API data present, bot players
+(`cpuPPR` set) are dropped from the count instead, which is language-proof.
 
 Leg and set counts are matched as "a number, then L/Leg/Legs or S/Set/Sets",
 independent of language and of whether the word is abbreviated — `First to 3L`,
-`3 Legs`, `2 Sets 3 Legs`, `Erster zu 3L` and `Beste van 3 sets` all work. The
-number must come first, which is why `MASL04` does not qualify.
+`3 Legs`, `2 Sets 3 Legs`, `First to 2S/2L`, `Erster zu 3L` and
+`Beste van 3 sets` all work. The number must come first, which is why `MASL04`
+does not qualify. The combined `2S/2L` form needs the bridge between the two
+tokens to allow a slash, not only spaces and digits.
+
+Bull-off is matched as a prefix, so an annotated `Bull-off (Official)` still
+reads as bull-off rather than falling through to a player name.
 
 Note that the API only ever *adds* to what the card said. A lobby object
 without a `sets` field says nothing about sets; overwriting the parsed value
 with `null` there used to wipe out a perfectly good reading.
+
+## Average
+
+The average filter reads the card's own `35+` badge, not the API. Autodarts
+only ever shows an average as a 5-wide bucket, so the filter offers the same
+5-step values (`10+` … `100+`, two `<select>`s for the range) and matches a
+lobby if **any** player's bucket falls in it. `parseCard()` keeps the bucket
+numbers in `avgBuckets`; `parseInt("35+")` drops the trailing `+`.
+
+Using the badge rather than the exact API average has two payoffs: what the
+card shows is exactly what filters — a `35+` lobby can no longer be hidden by a
+"30–40" filter because its API object was late — and a lobby with a visible
+average never falls into `nodata` on the average filter. A lobby that shows no
+average badge at all (only guests, say) genuinely has no value and stays
+`nodata`.
+
+The exact per-player average does exist in the API (`players[].user.average`,
+`host.average`) but is deliberately not used for filtering: relying on it once
+made lobbies undecidable whenever their API object had not arrived, even though
+the card plainly showed a bucket.
 
 ## Freezing the list
 
@@ -131,14 +199,28 @@ failsafe in case the leave event never arrives.
 Only armable while **no** lobby matches the filters — arming it when something
 already matches would make no sense.
 
-It fires on the first matching lobby that also has a genuinely free seat, and
-that check is independent of the "seat free" filter checkbox: joining a full
-lobby helps nobody. Where the exact player count is unavailable, a card with no
-player chips is reliably empty and counts as free; anything else counts as
-unknown, and unknown means do not fire.
+It fires on the first matching lobby that still has room for a one-on-one, and
+that check is independent of the "seat free" filter checkbox: joining a lobby
+that already has two players helps nobody. An unknown player count reads as
+"do not fire".
 
 The five second countdown before the click is deliberate. An unattended join
 leaves a real person waiting for an opponent who never throws.
+
+## "Seat free" means at most one player
+
+Not `players < maxPlayers`. `maxPlayers` is 6 on every lobby regardless of what
+the host intends, so it says nothing about whether a game is still joinable —
+an X01 lobby with two people in it is done taking players even though four
+slots are nominally open.
+
+The threshold is therefore one: room for the user to make it a one-on-one. The
+player count comes off the card, so unlike a `maxPlayers` comparison this never
+depends on API data and is never undecidable.
+
+Bots do not count towards the total (see *Badge parsing*): a lobby holding only
+`BOT LEVEL n` is empty as far as "seat free" and "hide empty" are concerned —
+there is no real opponent in it.
 
 ## Ordering without moving nodes
 
@@ -173,6 +255,11 @@ card badges.
   still finds the list — but this is what breaks first.
 - A genuinely new mode name that replaces the variant name would be unknown.
   The card then stays marked as `nodata` rather than being misfiled.
+- Bot detection from the card keys on the English name `BOT LEVEL n`. A
+  localised name would slip through and count as a real player — but only when
+  no API data is present; with the lobby object, `cpuPPR` catches it regardless
+  of language. The robust fix is to key on the bot's icon/markup once a bot
+  chip's DOM has been captured.
 - `parseCard()` expects the badge spelling `SI-DO`. A different format would
   defeat mode detection.
 - `joinControl()` guesses which element joins a lobby: a link to `/lobbies/…`,

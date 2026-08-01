@@ -1,6 +1,9 @@
 # Store packages are built, not committed
 *.zip
 
+# Submission notes — local only, not for the public repo
+STORE.md
+
 # Operating system
 .DS_Store
 Thumbs.db
