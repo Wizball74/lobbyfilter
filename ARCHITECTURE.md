@@ -66,9 +66,14 @@ Names are distinguished from settings by capitalisation: card names are
 upper-case throughout, settings are not. A guest called `BERMUDA` is a name; a
 badge reading `Bermuda` is a game type.
 
-Leg and set counts are matched language-independently as "any text, a number,
-then L or S at the end" — `First to 3L`, `Erster zu 3L`, `Eerst naar 2L` all
-work, while `MASL04` does not qualify because it does not end in L or S.
+Leg and set counts are matched as "a number, then L/Leg/Legs or S/Set/Sets",
+independent of language and of whether the word is abbreviated — `First to 3L`,
+`3 Legs`, `2 Sets 3 Legs`, `Erster zu 3L` and `Beste van 3 sets` all work. The
+number must come first, which is why `MASL04` does not qualify.
+
+Note that the API only ever *adds* to what the card said. A lobby object
+without a `sets` field says nothing about sets; overwriting the parsed value
+with `null` there used to wipe out a perfectly good reading.
 
 ## Freezing the list
 
@@ -94,12 +99,22 @@ While frozen:
   with all links and buttons defused. A misclick does nothing, which beats
   landing in a stranger's lobby.
 
-  A removal is not decided on the spot. React replaces whole card nodes on
-  hover, so a node disappearing usually means the same lobby is about to be
-  drawn again, not that it closed. `resolveGap()` waits 60 ms and looks for an
-  equivalent card by lobby UUID, falling back to text content. If one is back,
-  it inherits the pinned slot; only if none is does a ghost take the place.
-  Without this, every hover duplicated the whole list.
+  The order of operations matters. A node disappearing usually means React is
+  redrawing the same lobby, not that it closed — but finding that out takes
+  time the click does not have. So:
+
+  1. `adoptSlot()` looks for an equivalent card **synchronously** (by lobby
+     UUID, falling back to text content). A full re-render removes and
+     re-inserts in the same batch, so the replacement is normally already
+     there — it inherits the slot and no placeholder is ever created.
+  2. If nothing matches, a placeholder goes in **immediately**. Waiting even
+     60 ms to be sure leaves a gap, and everything below jumps up during
+     exactly the window in which the click lands.
+  3. `resolveGap()` looks again after 80 ms, for a replacement that only
+     arrived in a later frame, and removes the placeholder if one turns up.
+
+  Getting this wrong is visible in two distinct ways: hold too late and rows
+  shift under the cursor; hold too eagerly and the list briefly doubles.
 - New lobbies are appended at the bottom with a green bar rather than pushing
   into the order.
 

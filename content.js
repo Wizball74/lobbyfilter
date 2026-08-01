@@ -163,7 +163,13 @@
   const RANGE_TOKEN = /^\d+\s*-\s*\d+$/;
   const ROUNDS_TOKEN = /^(?:max\.?\s*)?\d+\s*(?:runden|rounds|r)$/i;
   const AVG_BADGE = /^\d{1,3}\+$/;
-  const LEG_SET_TOKEN = /^[^\d]*\d+\s*[LS]\s*$|^[^\d]*\d+\s*S\b[^\d]*\d+\s*L\s*$/i;
+  // Legs and sets, language- and spelling-independent: a number followed by
+  // L/Leg/Legs or S/Set/Sets, in any order, possibly both in one badge.
+  // Matches "First to 3L", "3 Legs", "2 Sets 3 Legs", "Erster zu 3L".
+  // Deliberately does not match "MASL04" — the number must come first.
+  const LEG_TOKEN = /(\d+)\s*(?:l\b|legs?\b)/i;
+  const SET_TOKEN = /(\d+)\s*(?:s\b|sets?\b)/i;
+  const LEG_SET_TOKEN = /^[^\d]*\d+\s*(?:l\b|legs?\b|s\b|sets?\b)[\s\d]*(?:l\b|legs?\b|s\b|sets?\b)?\s*$/i;
 
   // Variant detection matches word boundaries, not exact equality: Autodarts
   // packs several settings into one badge ("Cricket No Score").
@@ -281,13 +287,11 @@
       // Language independent: any text, a number, then L or S at the end.
       // Matches "First to 3L", "Erster zu 3L", "3L" — but not "MASL04".
       if (LEG_SET_TOKEN.test(s)) {
-        // Combined form first, otherwise the leg check swallows the sets.
-        const both = s.match(/(\d+)\s*S\b[^\d]*(\d+)\s*L\s*$/i);
-        if (both) { d.sets = Number(both[1]); d.legs = Number(both[2]); continue; }
-        const lm = s.match(/(\d+)\s*L\s*$/i);
-        if (lm) { d.legs = Number(lm[1]); continue; }
-        const sm = s.match(/(\d+)\s*S\s*$/i);
-        if (sm) { d.sets = Number(sm[1]); continue; }
+        const lm = s.match(LEG_TOKEN);
+        const sm = s.match(SET_TOKEN);
+        if (lm) d.legs = Number(lm[1]);
+        if (sm) d.sets = Number(sm[1]);
+        if (lm || sm) continue;
       }
       // Card names are upper-case throughout, settings are not. Protects a
       // guest called "BERMUDA" from being read as a game type.
@@ -338,8 +342,11 @@
     if (s.inMode) d.inMode = s.inMode;
     if (s.outMode) d.outMode = s.outMode;
     if (s.bullMode) d.bullMode = s.bullMode;
-    d.legs = lobby.legs != null ? lobby.legs : null;
-    d.sets = lobby.sets != null ? lobby.sets : null;
+    // Only override what the API actually carries. A lobby object without a
+    // sets field says nothing about sets — it must not erase what the card
+    // showed.
+    if (lobby.legs != null) d.legs = lobby.legs;
+    if (lobby.sets != null) d.sets = lobby.sets;
     d.bullOff = (lobby.bullOffMode || 'Off') !== 'Off';
     d.referee = !!lobby.hasReferee;
     d.avg = typeof host.average === 'number' ? host.average : null;
@@ -394,7 +401,7 @@
     need(f.onlyReferee, d.referee, (v) => v === true);
     need(f.country !== 'all', d.country, (v) => v === f.country);
 
-    // Fehlende Leg-/Set-Angabe heisst: passt nicht auf eine konkrete Zahl.
+    // A missing leg/set count cannot match a specific number.
     if (f.legs !== '' && d.legs !== Number(f.legs)) pass = false;
     if (f.sets !== '' && d.sets !== Number(f.sets)) pass = false;
     if (f.onlyBullOff && !d.bullOff) pass = false;
@@ -682,29 +689,13 @@
                        // the pointer straight away
   }
 
-  // A card vanished while frozen. If the same lobby is back as a new node,
-  // hand the pinned slot over to it. Only if it is genuinely gone does a
-  // placeholder take its place.
-  function resolveGap(oldCard, slot) {
-    if (!freeze.on || !freeze.container) return;
-    const sig = cardSignature(oldCard);
-    const { cards } = findCards();
-
-    for (const c of cards) {
-      if (c === oldCard) continue;
-      // A card apply() already appended as "fresh" still counts: it may be the
-      // re-rendered node, and it belongs in the old slot, not at the bottom.
-      if (freeze.order.has(c) && !c.classList.contains('adlf-fresh')) continue;
-      if (cardSignature(c) !== sig) continue;
-      setStyle(c, 'order', String(slot));   // same lobby, new node
-      freeze.order.set(c, slot);
-      c.classList.remove('adlf-fresh');
-      return;
-    }
-
-    // Really gone: hold the place so nothing below jumps up.
-    const ghost = oldCard.cloneNode(true);
+  // Inert stand-in that keeps a slot occupied. Nothing on it is clickable, so
+  // a misclick does nothing at all.
+  function makeGhost(card, slot) {
+    if (!freeze.container) return null;
+    const ghost = card.cloneNode(true);
     ghost.style.setProperty('order', String(slot));
+    ghost.style.removeProperty('display');
     ghost.classList.add('adlf-ghost');
     ghost.classList.remove('adlf-fresh', 'adlf-held');
     ghost.querySelectorAll('a, button').forEach((el) => {
@@ -714,6 +705,43 @@
     });
     freeze.ghosts.add(ghost);
     freeze.container.append(ghost);
+    return ghost;
+  }
+
+  function dropGhost(ghost) {
+    if (!ghost) return;
+    freeze.ghosts.delete(ghost);
+    ghost.remove();
+  }
+
+  // The stand-in is already in place. Now find out what it was standing in
+  // for: React replaces card nodes wholesale, so a removed node usually means
+  // the same lobby is coming back, not that it closed.
+  // Is the same lobby present as a different node? Then it was re-rendered,
+  // not closed: hand the pinned slot to the new node.
+  function adoptSlot(oldCard, slot) {
+    const sig = cardSignature(oldCard);
+    const { cards } = findCards();
+    for (const c of cards) {
+      if (c === oldCard) continue;
+      // A card apply() already appended as "fresh" still counts: it may be the
+      // re-rendered node, and it belongs in the old slot, not at the bottom.
+      if (freeze.order.has(c) && !c.classList.contains('adlf-fresh')) continue;
+      if (cardSignature(c) !== sig) continue;
+      setStyle(c, 'order', String(slot));
+      freeze.order.set(c, slot);
+      c.classList.remove('adlf-fresh');
+      return true;
+    }
+    return false;
+  }
+
+  // The stand-in is in place. Second look, in case the replacement node only
+  // arrived in a later frame.
+  function resolveGap(oldCard, slot, ghost) {
+    if (!freeze.on || !freeze.container) { dropGhost(ghost); return; }
+    if (adoptSlot(oldCard, slot)) dropGhost(ghost);
+    // Otherwise genuinely gone — the stand-in stays until the list thaws.
   }
 
   function joinTarget(card) {
@@ -1096,10 +1124,15 @@
             if (n.nodeType !== 1 || !freeze.order.has(n)) continue;
             const slot = freeze.order.get(n);
             freeze.order.delete(n);
-            // Do not decide yet: a node removed this instant is usually the
-            // same lobby about to be re-inserted by React. Check on the next
-            // tick whether an equivalent card is back.
-            setTimeout(() => resolveGap(n, slot), 60);
+            // A full re-render removes and re-inserts in the same batch, so
+            // the replacement is often already in the DOM. Check first — a
+            // stand-in would briefly double the list.
+            if (adoptSlot(n, slot)) continue;
+            // Otherwise hold the space immediately and decide afterwards.
+            // Waiting even 60 ms leaves a gap, and everything below jumps up
+            // during exactly the window in which the click lands.
+            const ghost = makeGhost(n, slot);
+            setTimeout(() => resolveGap(n, slot, ghost), 80);
           }
         }
       }
