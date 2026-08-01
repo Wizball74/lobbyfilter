@@ -1,0 +1,299 @@
+/* The bar sits inside someone else's UI and should belong there: no branding,
+   no boxes inside boxes, just a rule underneath. An unset filter recedes, a
+   set one comes forward. */
+
+#adlf-panel {
+  font: inherit;
+  color: #e6ecff;
+  margin: 0 0 16px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid rgba(140, 170, 235, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#adlf-panel .adlf-bar,
+#adlf-panel .adlf-advanced {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 18px;
+}
+
+#adlf-panel .adlf-advanced {
+  padding: 12px 14px;
+  background: rgba(20, 30, 58, 0.5);
+  border-radius: 8px;
+}
+
+#adlf-panel .adlf-advanced[hidden] { display: none; }
+#adlf-panel .adlf-grow { flex: 1 1 auto; }
+
+#adlf-panel .adlf-ctl { display: flex; flex-direction: column; gap: 4px; }
+
+#adlf-panel .adlf-ctl > span {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7f93c2;
+}
+
+/* Disabled because the setting does not apply to the selected game type. */
+#adlf-panel .adlf-off { opacity: 0.35; pointer-events: none; }
+
+#adlf-panel .adlf-pair { display: flex; gap: 4px; }
+
+#adlf-panel select,
+#adlf-panel input[type="number"],
+#adlf-panel .adlf-stepper input {
+  background: rgba(34, 49, 92, 0.9);
+  color: #f2f6ff;
+  border: 1px solid rgba(140, 170, 235, 0.24);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  line-height: 1.3;
+  outline: none;
+}
+
+#adlf-panel select { min-width: 128px; cursor: pointer; }
+#adlf-panel input[type="number"] { width: 56px; }
+
+/* --- Segmented control: radio buttons as a row of keys --- */
+#adlf-panel .adlf-seg {
+  display: inline-flex;
+  border: 1px solid rgba(140, 170, 235, 0.24);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+#adlf-panel .adlf-seg input { position: absolute; opacity: 0; pointer-events: none; }
+
+#adlf-panel .adlf-seg label {
+  padding: 5px 11px;
+  font-size: 12.5px;
+  color: #9fb3e0;
+  cursor: pointer;
+  background: rgba(34, 49, 92, 0.55);
+  border-left: 1px solid rgba(140, 170, 235, 0.18);
+  user-select: none;
+}
+
+#adlf-panel .adlf-seg label:first-of-type { border-left: 0; }
+#adlf-panel .adlf-seg label:hover { color: #f2f6ff; }
+
+#adlf-panel .adlf-seg input:checked + label {
+  background: #7fa8ff;
+  color: #101a33;
+  font-weight: 600;
+}
+
+#adlf-panel .adlf-seg input:focus-visible + label {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.6);
+}
+
+/* --- Number stepper --- */
+#adlf-panel .adlf-stepper { display: inline-flex; align-items: stretch; gap: 3px; }
+
+#adlf-panel .adlf-stepper input {
+  width: 46px;
+  text-align: center;
+  padding: 5px 4px;
+}
+
+#adlf-panel .adlf-step {
+  width: 26px;
+  background: rgba(34, 49, 92, 0.75);
+  color: #cfdcff;
+  border: 1px solid rgba(140, 170, 235, 0.24);
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#adlf-panel .adlf-step:hover { background: rgba(60, 84, 142, 0.9); color: #fff; }
+#adlf-panel .adlf-clear { font-size: 12px; color: #8ea4d4; }
+
+/* --- Checkboxes --- */
+#adlf-panel .adlf-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+#adlf-panel .adlf-advanced .adlf-checks { flex-basis: 100%; padding-top: 2px; }
+#adlf-panel .adlf-inline-checks { align-items: center; padding-bottom: 5px; }
+
+#adlf-panel .adlf-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #9fb3e0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#adlf-panel .adlf-check:hover { color: #f2f6ff; }
+#adlf-panel .adlf-check input { accent-color: #7fa8ff; width: 15px; height: 15px; }
+#adlf-panel .adlf-check.adlf-off { opacity: 0.4; cursor: default; }
+
+/* --- Buttons --- */
+#adlf-panel .adlf-toggle,
+#adlf-panel .adlf-reset {
+  background: transparent;
+  color: #9fb3e0;
+  border: 1px solid rgba(140, 170, 235, 0.24);
+  border-radius: 6px;
+  padding: 6px 11px;
+  font-size: 12.5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#adlf-panel .adlf-toggle:hover,
+#adlf-panel .adlf-reset:hover { color: #f2f6ff; border-color: rgba(140, 170, 235, 0.5); }
+
+#adlf-panel .adlf-toggle.adlf-on {
+  color: #f2f6ff;
+  background: rgba(34, 49, 92, 0.9);
+  border-color: rgba(140, 170, 235, 0.45);
+}
+
+#adlf-panel .adlf-count {
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 8px;
+  background: #7fa8ff; color: #101a33;
+  font-size: 10.5px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+#adlf-panel select:focus-visible,
+#adlf-panel input:focus-visible,
+#adlf-panel button:focus-visible {
+  border-color: #7fa8ff;
+  box-shadow: 0 0 0 2px rgba(127, 168, 255, 0.35);
+}
+
+/* --- Footer --- */
+#adlf-panel .adlf-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+#adlf-panel .adlf-status { font-size: 11px; color: #7f93c2; }
+
+/* --- Auto-join countdown --- */
+#adlf-joinbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(127, 168, 255, 0.16);
+  border: 1px solid rgba(127, 168, 255, 0.45);
+  font-size: 13px;
+  color: #f2f6ff;
+}
+
+/* Card an active filter cannot decide for lack of detail data. */
+.adlf-nodata {
+  opacity: 0.55;
+  box-shadow: inset 3px 0 0 rgba(224, 176, 84, 0.7);
+}
+
+@media (max-width: 720px) {
+  #adlf-panel .adlf-bar,
+  #adlf-panel .adlf-advanced { gap: 8px 12px; }
+  #adlf-panel select { min-width: 104px; }
+  #adlf-panel .adlf-grow { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #adlf-panel *, #adlf-joinbar { transition: none !important; animation: none !important; }
+}
+
+/* Variant with no lobby currently open: selectable, but quieter. */
+#adlf-panel option.adlf-empty-option { color: #8ea4d4; }
+
+/* Checkbox row as a multi-select, set tight so it reads as one control. */
+#adlf-panel .adlf-tight {
+  gap: 4px 10px;
+  padding: 5px 0 4px;
+  flex-basis: auto;
+}
+
+#adlf-panel .adlf-tight .adlf-check { font-size: 13px; color: #cfdcff; }
+#adlf-panel .adlf-tight .adlf-check:has(input:checked) { color: #fff; font-weight: 600; }
+
+/* Player name on a lobby card. Guests without an account have neither avatar
+   nor average badge — without this marker their chip looks like "Bull-off",
+   and an occupied lobby appears empty. */
+.adlf-player {
+  color: #7fe3b0 !important;
+  font-weight: 650;
+  letter-spacing: 0.015em;
+}
+
+/* --- Frozen list ----------------------------------------------------------
+   While the pointer rests on a join button the list holds still. Cards no
+   longer disappear, they only fade — otherwise the wrong lobby slides under
+   the cursor at the moment of the click. */
+
+.adlf-held,
+.adlf-ghost {
+  opacity: 0.3;
+  transition: opacity 120ms ease-out;
+}
+
+/* Placeholder for a lobby that no longer exists: visible as a spacer, but
+   nothing on it is clickable. A misclick therefore does nothing at all. */
+.adlf-ghost {
+  pointer-events: none;
+  user-select: none;
+  filter: grayscale(0.6);
+}
+
+.adlf-held { pointer-events: none; }
+
+/* Arrived while frozen — waits at the bottom. */
+.adlf-fresh { box-shadow: inset 3px 0 0 rgba(127, 227, 176, 0.8); }
+
+@media (prefers-reduced-motion: reduce) {
+  .adlf-held, .adlf-ghost { transition: none; }
+}
+
+/* Frozen state, made visible: without a signal a still list is
+   indistinguishable from a list where nothing is happening. */
+
+#adlf-panel .adlf-status.adlf-frozen-note {
+  color: #7fe3b0;
+}
+
+#adlf-panel .adlf-status.adlf-frozen-note::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #7fe3b0;
+  vertical-align: 1px;
+}
+
+/* A quiet frame around the list itself — the eye is on the cards, not on the
+   status line, at the moment of the click. */
+.adlf-frozen-list {
+  position: relative;
+  box-shadow: 0 0 0 1px rgba(127, 227, 176, 0.35);
+  border-radius: 10px;
+}
