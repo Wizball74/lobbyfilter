@@ -38,8 +38,12 @@
       aClear: "clear $1",
       sCount: "$1 of $2 lobbies",
       sNoDetails: "$1 without details",
+      ttNoData: "A filter needs data this lobby doesn't show (country/referee) and it hasn't arrived, so it can't be filtered for sure — shown just in case.",
       sJoinIn: "Matching lobby found — joining in $1 s",
       sFrozen: "List held while you aim",
+      vAll: "all ($1)",
+      vSome: "$1 game types",
+      vNone: "none selected",
       sFrozenMore: "List held · $1 waiting",
     },
     de: {
@@ -70,8 +74,12 @@
       aClear: "$1 zurücksetzen",
       sCount: "$1 von $2 Lobbys",
       sNoDetails: "$1 ohne Detaildaten",
+      ttNoData: "Ein Filter braucht Daten, die diese Lobby nicht anzeigt (Land/Schiri) und die noch nicht angekommen sind – sie kann nicht sicher gefiltert werden und wird sicherheitshalber angezeigt.",
       sJoinIn: "Passende Lobby gefunden — Beitritt in $1 s",
       sFrozen: "Liste angehalten, solange du zielst",
+      vAll: "alle ($1)",
+      vSome: "$1 Spielarten",
+      vNone: "keine gewählt",
       sFrozenMore: "Liste angehalten · $1 warten",
     },
     nl: {
@@ -102,8 +110,12 @@
       aClear: "$1 wissen",
       sCount: "$1 van $2 lobby's",
       sNoDetails: "$1 zonder details",
+      ttNoData: "Een filter heeft gegevens nodig die deze lobby niet toont (land/scheidsrechter) en die nog niet binnen zijn – hij kan niet zeker gefilterd worden en blijft voor de zekerheid zichtbaar.",
       sJoinIn: "Passende lobby gevonden — deelnemen over $1 s",
       sFrozen: "Lijst staat stil terwijl je richt",
+      vAll: "alle ($1)",
+      vSome: "$1 spelsoorten",
+      vNone: "geen gekozen",
       sFrozenMore: "Lijst staat stil · $1 wachten",
     },
     fr: {
@@ -134,8 +146,12 @@
       aClear: "effacer $1",
       sCount: "$1 lobbys sur $2",
       sNoDetails: "$1 sans détails",
+      ttNoData: "Un filtre a besoin de données que ce salon n'affiche pas (pays/arbitre) et qui ne sont pas encore arrivées : il ne peut pas être filtré avec certitude et reste affiché par précaution.",
       sJoinIn: "Lobby correspondant trouvé — connexion dans $1 s",
       sFrozen: "Liste figée pendant que vous visez",
+      vAll: "toutes ($1)",
+      vSome: "$1 variantes",
+      vNone: "aucune choisie",
       sFrozenMore: "Liste figée · $1 en attente",
     },
   };
@@ -169,7 +185,7 @@
   // Deliberately does not match "MASL04" — the number must come first.
   const LEG_TOKEN = /(\d+)\s*(?:l\b|legs?\b)/i;
   const SET_TOKEN = /(\d+)\s*(?:s\b|sets?\b)/i;
-  const LEG_SET_TOKEN = /^[^\d]*\d+\s*(?:l\b|legs?\b|s\b|sets?\b)[\s\d]*(?:l\b|legs?\b|s\b|sets?\b)?\s*$/i;
+  const LEG_SET_TOKEN = /^[^\d]*\d+\s*(?:l\b|legs?\b|s\b|sets?\b)[\s\d/]*(?:l\b|legs?\b|s\b|sets?\b)?\s*$/i;
 
   // Variant detection matches word boundaries, not exact equality: Autodarts
   // packs several settings into one badge ("Cricket No Score").
@@ -204,16 +220,22 @@
   };
 
   const DEFAULTS = {
-    variant: 'all', baseScores: [], outMode: 'all', inMode: 'all',
-    bullMode: 'all', legs: '', sets: '',
+    // Multi-selects. These must live here, not only in the start-up guards:
+    // isDefault() treats an empty selection as "default" only when the default
+    // is itself an array, and reset() rebuilds filters from DEFAULTS alone.
+    // Leaving them out made the Advanced badge count baseScores/bullModes/
+    // countries as always-active, and made reset() drop them to undefined.
+    variants: [], inModes: [], outModes: [], baseScores: [],
+    bullModes: [], countries: [],
+    legs: '', sets: '',
     onlyBullOff: false, onlyReferee: false,
     freeSeat: false, hideEmpty: false, sortByScore: false,
-    avgMin: '', avgMax: '', country: 'all',
+    avgMin: '', avgMax: '',
     hideNoDetails: false, showAdvanced: false, autoJoin: false
   };
   const ADVANCED_KEYS = [
-    'baseScores', 'bullMode', 'sets', 'onlyBullOff',
-    'onlyReferee', 'avgMin', 'avgMax', 'country', 'hideNoDetails'
+    'baseScores', 'bullModes', 'sets', 'onlyBullOff',
+    'onlyReferee', 'avgMin', 'avgMax', 'countries', 'hideNoDetails'
   ];
 
   const lobbies = new Map();
@@ -222,6 +244,7 @@
   let pending = null;
   let busy = false;
   let variantsSeen = '';
+  let countriesSeen = '';
   let joinTimer = null;
 
   // Freezing: while the pointer rests on a join button the list must not
@@ -267,12 +290,16 @@
   function parseCard(card) {
     const d = {
       variant: null, baseScore: null, inMode: null, outMode: null,
-      legs: null, sets: null, bullOff: false, avgBadges: 0, otherTokens: 0
+      legs: null, sets: null, bullOff: false, avgBadges: 0, avgBuckets: [],
+      otherTokens: 0
     };
     card.querySelectorAll('.adlf-player').forEach((n) => n.classList.remove('adlf-player'));
     for (const { node, text: raw } of leafNodes(card)) {
       const s = raw.trim();
-      if (AVG_BADGE.test(s)) { d.avgBadges++; continue; }
+      // "35+" is a 5-wide average bucket. Keep the value, not just the count —
+      // the average filter matches against it, so what the card shows is what
+      // filters. parseInt drops the trailing "+".
+      if (AVG_BADGE.test(s)) { d.avgBadges++; d.avgBuckets.push(parseInt(s, 10)); continue; }
       if (/^\d{3,4}$/.test(s)) {
         const n = Number(s);
         if (n >= 101 && n <= 1001) { d.baseScore = n; d.variant = 'X01'; continue; }
@@ -283,7 +310,9 @@
         d.outMode = MODE_MAP[m[2].toUpperCase()];
         continue;
       }
-      if (/^bull[-\s]?off$/i.test(s)) { d.bullOff = true; continue; }
+      // Also matches annotated variants like "Bull-off (Official)"; still a
+      // bull-off, and must not fall through to being read as a player name.
+      if (/^bull[-\s]?off\b/i.test(s)) { d.bullOff = true; continue; }
       // Language independent: any text, a number, then L or S at the end.
       // Matches "First to 3L", "Erster zu 3L", "3L" — but not "MASL04".
       if (LEG_SET_TOKEN.test(s)) {
@@ -293,6 +322,13 @@
         if (sm) d.sets = Number(sm[1]);
         if (lm || sm) continue;
       }
+      // ATC and RTW are acronym game types, always all-caps, so the
+      // "upper-case = player name" rule below would misread them (an ATC-only
+      // lobby then looks occupied instead of empty). They are unambiguous
+      // enough to match on their own — unlike a word variant, where a guest
+      // "BERMUDA" must stay a name.
+      if (/^(?:atc|rtw)$/i.test(s)) { if (!d.variant) d.variant = s.toUpperCase(); continue; }
+
       // Card names are upper-case throughout, settings are not. Protects a
       // guest called "BERMUDA" from being read as a game type.
       const shouty = s.length > 2 && s === s.toUpperCase() && /[A-ZÄÖÜ]/.test(s);
@@ -307,6 +343,14 @@
       }
       if (known) continue;
       if (!shouty && (isSettingBadge(s) || RANGE_TOKEN.test(s) || ROUNDS_TOKEN.test(s))) continue;
+      // A bare number (a stray leg/set count shown as "1") is never a name.
+      if (/^\d+$/.test(s)) continue;
+      // A CPU opponent ("BOT LEVEL 4") is not a real player — a lobby with only
+      // bots should read as empty. This is the fallback when no API data has
+      // arrived; with API data, cpuPPR entries are dropped in describe(). Name
+      // match only, so a localised bot name would slip through until the DOM is
+      // known.
+      if (/^bot\s+level\s+\d+$/i.test(s)) continue;
       // Not a known setting badge, so it is a player name. Guests without an
       // account have neither avatar nor average badge and would otherwise look
       // like a setting. Mark it visibly.
@@ -331,6 +375,7 @@
       inMode: p.inMode, outMode: p.outMode,
       legs: p.legs, sets: p.sets, bullOff: p.bullOff,
       bullMode: null, referee: null, avg: null, country: null,
+      avgBuckets: p.avgBuckets,
       players: visiblePlayers(card, p), playersExact: false, maxPlayers: null
     };
     if (!lobby) return d;
@@ -351,7 +396,12 @@
     d.referee = !!lobby.hasReferee;
     d.avg = typeof host.average === 'number' ? host.average : null;
     d.country = host.country || '';
-    if (Array.isArray(lobby.players)) { d.players = lobby.players.length; d.playersExact = true; }
+    // Count real players only: a CPU opponent (cpuPPR set) does not make a
+    // lobby occupied — a bot-only lobby reads as empty.
+    if (Array.isArray(lobby.players)) {
+      d.players = lobby.players.filter((pl) => pl.cpuPPR == null).length;
+      d.playersExact = true;
+    }
     if (lobby.maxPlayers != null) d.maxPlayers = lobby.maxPlayers;
     return d;
   }
@@ -364,7 +414,7 @@
   // in the UI. They must stop filtering too — otherwise a filter the bar
   // shows as disabled still takes effect.
   function x01Context() {
-    return filters.variant === 'all' || filters.variant === 'X01';
+    return filters.variants.length === 0 || filters.variants.includes('X01');
   }
 
   function decide(d) {
@@ -393,29 +443,36 @@
       if (!ok(value)) pass = false;
     };
 
-    need(f.variant !== 'all', d.variant, (v) => v === f.variant);
+    need(f.variants.length > 0, d.variant, (v) => f.variants.includes(v));
     needX01(x01 && f.baseScores.length > 0, d.baseScore, (v) => f.baseScores.includes(Number(v)));
-    needX01(x01 && f.outMode !== 'all', d.outMode, (v) => v === f.outMode);
-    needX01(x01 && f.inMode !== 'all', d.inMode, (v) => v === f.inMode);
-    needX01(x01 && f.bullMode !== 'all', d.bullMode, (v) => v === f.bullMode);
+    needX01(x01 && f.outModes.length > 0, d.outMode, (v) => f.outModes.includes(v));
+    needX01(x01 && f.inModes.length > 0, d.inMode, (v) => f.inModes.includes(v));
+    needX01(x01 && f.bullModes.length > 0, d.bullMode, (v) => f.bullModes.includes(v));
     need(f.onlyReferee, d.referee, (v) => v === true);
-    need(f.country !== 'all', d.country, (v) => v === f.country);
+    need(f.countries.length > 0, d.country, (v) => f.countries.includes(v));
 
     // A missing leg/set count cannot match a specific number.
     if (f.legs !== '' && d.legs !== Number(f.legs)) pass = false;
     if (f.sets !== '' && d.sets !== Number(f.sets)) pass = false;
     if (f.onlyBullOff && !d.bullOff) pass = false;
 
+    // Average is read from the card's visible "X+" buckets, not the API — what
+    // you see is what filters. Match if ANY player's bucket is in the selected
+    // range. No bucket at all (e.g. only guests) is a real data gap.
     if (f.avgMin !== '' || f.avgMax !== '') {
-      if (d.avg === null) missing = true;
-      else if ((f.avgMin !== '' && d.avg < +f.avgMin) ||
-               (f.avgMax !== '' && d.avg > +f.avgMax)) pass = false;
+      if (!d.avgBuckets.length) missing = true;
+      else {
+        const lo = f.avgMin === '' ? -Infinity : +f.avgMin;
+        const hi = f.avgMax === '' ? Infinity : +f.avgMax;
+        if (!d.avgBuckets.some((b) => b >= lo && b <= hi)) pass = false;
+      }
     }
     if (f.hideEmpty && d.players === 0) pass = false;
-    if (f.freeSeat) {
-      if (!d.playersExact || d.maxPlayers === null) missing = true;
-      else if (d.players >= d.maxPlayers) pass = false;
-    }
+    // "Seat free" means room for a one-on-one: at most one player in there.
+    // maxPlayers is 6 on every lobby regardless of what the host wants, so it
+    // says nothing about whether a game is still joinable. The player count
+    // comes off the card, so this is always decidable.
+    if (f.freeSeat && d.players > 1) pass = false;
 
     if (!pass) return 'no';
     return missing ? 'nodata' : 'yes';
@@ -427,7 +484,7 @@
     return a === b;
   }
 
-  const X01_KEYS = ['baseScores', 'outMode', 'inMode', 'bullMode'];
+  const X01_KEYS = ['baseScores', 'outModes', 'inModes', 'bullModes'];
 
   function counts(k) {
     return !isDefault(k) && (x01Context() || !X01_KEYS.includes(k));
@@ -515,7 +572,13 @@
         } else {
           setStyle(card, 'display', null);
           card.classList.remove('adlf-held');
-          card.classList.toggle('adlf-nodata', verdict === 'nodata' && anyFilterActive());
+          const noDetail = verdict === 'nodata' && anyFilterActive();
+          card.classList.toggle('adlf-nodata', noDetail);
+          // Native tooltip so the amber marker explains itself on hover. It is
+          // an attribute, not a node — the childList observer stays asleep.
+          const tip = t('ttNoData');
+          if (noDetail) { if (card.title !== tip) card.title = tip; }
+          else if (card.title === tip) card.removeAttribute('title');
           if (freeze.on && !freeze.order.has(card)) {
             // Arrived while frozen: append at the end.
             setStyle(card, 'order', String(freeze.next++));
@@ -756,17 +819,12 @@
     if (b) b.remove();
   }
 
-  // Auto-join needs an actually free seat, regardless of the "seat free"
-  // checkbox. Joining a full lobby helps nobody, and where the player count is
-  // unknown the safe reading is "do not fire".
+  // Auto-join needs room for a one-on-one, regardless of the "seat free"
+  // checkbox: joining a lobby that already has two players helps nobody.
+  // An unknown count reads as "do not fire".
   function hasFreeSeat(d) {
     if (d.players === null || d.players === undefined) return false;
-    if (d.maxPlayers === null || d.maxPlayers === undefined) {
-      // No exact count available: a card with no player chips is reliably
-      // empty, so there is definitely room.
-      return d.players === 0;
-    }
-    return d.players < d.maxPlayers;
+    return d.players <= 1;
   }
 
   function handleAutoJoin(rows) {
@@ -820,30 +878,6 @@
       [el('span', {}, [label]), node]);
   }
 
-  function selectNode(key, options) {
-    const s = el('select', { 'data-key': key, onchange: (e) => update(key, e.target.value) });
-    for (const [val, text] of options) {
-      const o = el('option', { value: val }, [text]);
-      if (String(filters[key]) === String(val)) o.selected = true;
-      s.append(o);
-    }
-    return s;
-  }
-
-  // Two to four values as a segmented control rather than a dropdown: one
-  // click instead of open-aim-click.
-  function segmented(key, options) {
-    const wrap = el('div', { class: 'adlf-seg', 'data-key': key, role: 'radiogroup' }, []);
-    for (const [val, text] of options) {
-      const id = `adlf-${key}-${String(val).replace(/\W/g, '')}`;
-      const r = el('input', { type: 'radio', name: `adlf-${key}`, id, value: val });
-      r.checked = String(filters[key]) === String(val);
-      r.addEventListener('change', () => update(key, val));
-      wrap.append(r, el('label', { for: id }, [text]));
-    }
-    return wrap;
-  }
-
   function stepper(key, label) {
     const input = el('input', { type: 'text', inputmode: 'numeric', placeholder: t('phAny') });
     input.value = filters[key];
@@ -861,12 +895,106 @@
     };
     input.addEventListener('change', (e) => set(e.target.value.trim()));
     const dec = el('button', { type: 'button', class: 'adlf-step', 'aria-label': t('aDecrease', label),
-      onclick: () => step(-1) }, ['−']);
+      onclick: () => step(-1) }, ['\u2212']);
     const inc = el('button', { type: 'button', class: 'adlf-step', 'aria-label': t('aIncrease', label),
       onclick: () => step(1) }, ['+']);
     const clr = el('button', { type: 'button', class: 'adlf-step adlf-clear', 'aria-label': t('aClear', label),
-      onclick: () => { input.value = ''; update(key, ''); } }, ['×']);
+      onclick: () => { input.value = ''; update(key, ''); } }, ['\u00d7']);
     return control(label, el('span', { class: 'adlf-stepper' }, [dec, input, inc, clr]), key);
+  }
+
+  // Two to four values as a segmented control rather than a dropdown: one
+  // click instead of open-aim-click. Multi-select — nothing pressed means all,
+  // so there is no separate "all" key to compete with the real values.
+  function segmented(key, options) {
+    const wrap = el('div', { class: 'adlf-seg', 'data-key': key, role: 'group' }, []);
+    for (const [val, text] of options) {
+      const id = `adlf-${key}-${String(val).replace(/\W/g, '')}`;
+      const c = el('input', { type: 'checkbox', id, value: val });
+      c.checked = filters[key].includes(val);
+      c.addEventListener('change', (e) => {
+        const next = filters[key].filter((x) => x !== val);
+        if (e.target.checked) next.push(val);
+        update(key, next);
+      });
+      wrap.append(c, el('label', { for: id }, [text]));
+    }
+    return wrap;
+  }
+
+  // A dropdown that holds checkboxes. Eleven game types as loose checkboxes
+  // would be a wall of tiles in the main bar; a plain <select> cannot combine.
+  // This keeps the trigger as narrow as a select and still allows "Bermuda or
+  // Shanghai or Cricket".
+  function checkboxMenu(key, getItems) {
+    const wrap = el('div', { class: 'adlf-menu', 'data-key': key }, []);
+    const trigger = el('button', { type: 'button', class: 'adlf-menu-trigger',
+      'aria-haspopup': 'true', 'aria-expanded': 'false' }, []);
+    const list = el('div', { class: 'adlf-menu-list', role: 'group' }, []);
+    list.hidden = true;
+
+    const close = () => {
+      list.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+      wrap.classList.remove('adlf-open');
+    };
+    const open = () => {
+      buildList();
+      list.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+      wrap.classList.add('adlf-open');
+    };
+
+    function label() {
+      const items = getItems();
+      const picked = filters[key];
+      if (!picked.length) return t('vAll', items.reduce((n, i) => n + i.count, 0));
+      if (picked.length === 1) {
+        const hit = items.find((i) => i.value === picked[0]);
+        const name = hit ? hit.label : picked[0];
+        return hit && hit.count ? `${name} (${hit.count})` : name;
+      }
+      return t('vSome', picked.length);
+    }
+
+    function paint() {
+      trigger.textContent = label();
+      trigger.classList.toggle('adlf-set', filters[key].length > 0);
+    }
+
+    function buildList() {
+      list.textContent = '';
+      for (const item of getItems()) {
+        const c = el('input', { type: 'checkbox' });
+        c.checked = filters[key].includes(item.value);
+        c.addEventListener('change', (e) => {
+          const next = filters[key].filter((x) => x !== item.value);
+          if (e.target.checked) next.push(item.value);
+          update(key, next);
+          paint();
+        });
+        const row = el('label', { class: 'adlf-menu-item' },
+          [c, el('span', {}, [item.label]),
+           el('span', { class: 'adlf-menu-count' }, [item.count ? String(item.count) : ''])]);
+        if (!item.count) row.classList.add('adlf-menu-empty');
+        list.append(row);
+      }
+      if (filters[key].length) {
+        list.append(el('button', { type: 'button', class: 'adlf-menu-clear',
+          onclick: () => { update(key, []); paint(); buildList(); } }, [t('optAll')]));
+      }
+    }
+
+    trigger.addEventListener('click', () => (list.hidden ? open() : close()));
+    wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape') { close(); trigger.focus(); } });
+    document.addEventListener('click', (e) => {
+      if (!wrap.contains(e.target)) close();
+    }, true);
+
+    wrap.append(trigger, list);
+    wrap.__paint = paint;
+    paint();
+    return wrap;
   }
 
   // Multi-select: nothing ticked means all. Lets 301 and 501 be filtered
@@ -894,11 +1022,18 @@
     return el('label', { class: 'adlf-check' }, [c, label]);
   }
 
-  function numberNode(key, placeholder) {
-    const i = el('input', { type: 'number', min: '0', placeholder });
-    i.value = filters[key];
-    i.addEventListener('input', (e) => update(key, e.target.value));
-    return i;
+  // 5-step dropdown. Autodarts only ever shows averages as 5-wide buckets
+  // ("35+"), so a free number field just invited "why does 34 behave like 35".
+  // Empty option means no bound.
+  function avgSelect(key, placeholder) {
+    const sel = el('select', { class: 'adlf-select', 'data-key': key });
+    sel.append(el('option', { value: '' }, [placeholder]));
+    for (let v = 10; v <= 100; v += 5) {
+      sel.append(el('option', { value: String(v) }, [v + '+']));
+    }
+    sel.value = filters[key] === '' ? '' : String(filters[key]);
+    sel.addEventListener('change', (e) => update(key, e.target.value));
+    return sel;
   }
 
   function ensurePanel(container) {
@@ -907,14 +1042,14 @@
 
     const advanced = el('div', { class: 'adlf-advanced' }, [
       control(t('fScore'), checkboxSet('baseScores', scoreChoices()), 'baseScores'),
-      control(t('fBull'), segmented('bullMode', [
-        ['all', t('optAll')], ['25/50', '25/50'], ['50', '50']
-      ]), 'bullMode'),
+      control(t('fBull'), segmented('bullModes', [
+        ['25/50', '25/50'], ['50', '50']
+      ]), 'bullModes'),
       stepper('sets', t('fSets')),
       control(t('fAverage'), el('span', { class: 'adlf-pair' }, [
-        numberNode('avgMin', 'von'), numberNode('avgMax', 'bis')
+        avgSelect('avgMin', 'von'), avgSelect('avgMax', 'bis')
       ])),
-      control(t('fCountry'), selectNode('country', [['all', t('optAll')]])),
+      control(t('fCountry'), checkboxMenu('countries', countryChoices)),
       el('div', { class: 'adlf-checks' }, [
         checkbox('onlyBullOff', t('cOnlyBullOff')),
         checkbox('onlyReferee', t('cOnlyReferee')),
@@ -937,13 +1072,13 @@
 
     panel = el('div', { id: 'adlf-panel' }, [
       el('div', { class: 'adlf-bar' }, [
-        control(t('fVariant'), selectNode('variant', [['all', t('optAll')]]), 'variant'),
-        control(t('fIn'), segmented('inMode', [
-          ['all', t('optAll')], ['Straight', 'SI'], ['Double', 'DI'], ['Master', 'MI']
-        ]), 'inMode'),
-        control(t('fOut'), segmented('outMode', [
-          ['all', t('optAll')], ['Straight', 'SO'], ['Double', 'DO'], ['Master', 'MO']
-        ]), 'outMode'),
+        control(t('fVariant'), checkboxMenu('variants', variantChoices), 'variants'),
+        control(t('fIn'), segmented('inModes', [
+          ['Straight', 'SI'], ['Double', 'DI'], ['Master', 'MI']
+        ]), 'inModes'),
+        control(t('fOut'), segmented('outModes', [
+          ['Straight', 'SO'], ['Double', 'DO'], ['Master', 'MO']
+        ]), 'outModes'),
         stepper('legs', t('fLegs')),
         el('div', { class: 'adlf-checks adlf-inline-checks' }, [
           checkbox('freeSeat', t('cFreeSeat')),
@@ -985,67 +1120,72 @@
   }
 
   // All variants stay selectable; the number shows how many are open right
-  // now. Unknown variants from the list are appended at the end.
+  // now. Unknown variants seen in the list are appended at the end.
+  let variantCounts = new Map();
+
+  function variantChoices() {
+    const order = VARIANT_ORDER.slice();
+    for (const v of Array.from(variantCounts.keys()).sort()) {
+      if (!order.includes(v)) order.push(v);
+    }
+    for (const v of filters.variants) if (!order.includes(v)) order.push(v);
+    return order.map((v) => ({
+      value: v,
+      label: VARIANT_NAMES[v] || v,
+      count: variantCounts.get(v) || 0
+    }));
+  }
+
   function refreshVariants(cards) {
     if (!panel) return;
-    const sel = panel.querySelector('select[data-key="variant"]');
-    if (!sel) return;
-
     const counts = new Map();
     for (const c of cards) {
       const v = parseCard(c).variant;
       if (v) counts.set(v, (counts.get(v) || 0) + 1);
     }
-    const order = VARIANT_ORDER.slice();
-    for (const v of Array.from(counts.keys()).sort()) {
-      if (!order.includes(v)) order.push(v);
-    }
-
-    const sig = order.map((v) => v + ':' + (counts.get(v) || 0)).join('|');
+    const sig = Array.from(counts).sort().map((e) => e.join(':')).join('|');
     if (sig === variantsSeen) return;
     variantsSeen = sig;
+    variantCounts = counts;
+    const menu = panel.querySelector('.adlf-menu[data-key="variants"]');
+    if (menu && menu.__paint) menu.__paint();
+  }
 
-    const cur = filters.variant;
-    sel.textContent = '';
-    const total = cards.length;
-    sel.append(el('option', { value: 'all' }, [t('optAllCount', total)]));
-    for (const v of order) {
-      const n = counts.get(v) || 0;
-      const label = (VARIANT_NAMES[v] || v) + (n ? ` (${n})` : '');
-      const o = el('option', { value: v }, [label]);
-      if (v === cur) o.selected = true;
-      if (!n) o.className = 'adlf-empty-option';
-      sel.append(o);
-    }
+  let countryCounts = new Map();
+
+  function countryChoices() {
+    const list = Array.from(countryCounts.keys()).sort();
+    for (const c of filters.countries) if (!list.includes(c)) list.push(c);
+    return list.map((c) => ({
+      value: c, label: c.toUpperCase(), count: countryCounts.get(c) || 0
+    }));
   }
 
   function refreshCountries() {
     if (!panel) return;
-    const sel = panel.querySelector('select[data-key="country"]');
-    if (!sel) return;
-    const codes = Array.from(new Set(
-      Array.from(lobbies.values()).map((l) => (l.host && l.host.country) || '')
-    )).filter(Boolean).sort();
-    if (sel.options.length - 1 === codes.length) return;
-    const cur = filters.country;
-    sel.textContent = '';
-    sel.append(el('option', { value: 'all' }, [t('optAll')]));
-    for (const c of codes) {
-      const o = el('option', { value: c }, [c.toUpperCase()]);
-      if (c === cur) o.selected = true;
-      sel.append(o);
+    const counts = new Map();
+    for (const l of lobbies.values()) {
+      const c = (l.host && l.host.country) || '';
+      if (c) counts.set(c, (counts.get(c) || 0) + 1);
     }
+    const sig = Array.from(counts).sort().map((e) => e.join(':')).join('|');
+    if (sig === countriesSeen) return;
+    countriesSeen = sig;
+    countryCounts = counts;
+    const menu = panel.querySelector('.adlf-menu[data-key="countries"]');
+    if (menu && menu.__paint) menu.__paint();
   }
 
-  // Disable X01 settings as soon as a variant is selected that has none.
+  // Disable X01 settings only when X01 is definitely excluded — with a
+  // multi-select, "Cricket + X01" still needs the out mode.
   function syncDisabled() {
     if (!panel) return;
-    const x01 = filters.variant === 'all' || filters.variant === 'X01';
+    const x01 = x01Context();
     for (const key of ['outMode', 'inMode', 'baseScores']) {
       const holder = panel.querySelector(`.adlf-ctl[data-for="${key}"]`);
       if (!holder) continue;
       holder.classList.toggle('adlf-off', !x01);
-      holder.querySelectorAll('input, select').forEach((n) => { n.disabled = !x01; });
+      holder.querySelectorAll('input, select, button').forEach((n) => { n.disabled = !x01; });
     }
   }
 
@@ -1081,7 +1221,7 @@
   function update(key, value) {
     filters[key] = value;
     chrome.storage.local.set({ [STORE_KEY]: filters });
-    if (key === 'variant') syncDisabled();
+    if (key === 'variants') syncDisabled();
     if (key === 'autoJoin' && !value) cancelJoin();
     const btn = panel && panel.querySelector('.adlf-toggle');
     if (btn) paintToggle(btn);
@@ -1105,6 +1245,25 @@
     filters = Object.assign({}, DEFAULTS, res[STORE_KEY] || {});
 
     // Migration from single value to set: carry the stored selection over.
+    // Migration from single variant to a set.
+    if (typeof filters.variant === 'string') {
+      if (filters.variant !== 'all') filters.variants = [filters.variant];
+      delete filters.variant;
+      chrome.storage.local.set({ [STORE_KEY]: filters });
+    }
+    if (!Array.isArray(filters.variants)) filters.variants = [];
+
+    // Migration: single-value filters became sets.
+    for (const [oldKey, newKey] of [['outMode', 'outModes'], ['inMode', 'inModes'],
+                                     ['bullMode', 'bullModes'], ['country', 'countries']]) {
+      if (typeof filters[oldKey] === 'string') {
+        if (filters[oldKey] !== 'all') filters[newKey] = [filters[oldKey]];
+        delete filters[oldKey];
+        chrome.storage.local.set({ [STORE_KEY]: filters });
+      }
+      if (!Array.isArray(filters[newKey])) filters[newKey] = [];
+    }
+
     if (typeof filters.baseScore === 'string') {
       if (filters.baseScore !== 'all') filters.baseScores = [Number(filters.baseScore)];
       delete filters.baseScore;
