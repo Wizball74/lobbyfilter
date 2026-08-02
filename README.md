@@ -46,10 +46,11 @@ From the store (once available):
 
 Manually, from this repository:
 
-1. Download or clone the repository
+1. Download or clone the zip file from the latest version (folder "_releases")
+2. Unzip the files
 2. Open `chrome://extensions` or `edge://extensions`
 3. Turn on developer mode
-4. Choose "Load unpacked" and select the folder
+4. Choose "Load unpacked" and select the folder wit the unzipped files
 5. Reload `play.autodarts.io`
 
 Requires Chrome or Edge 111 or newer.
