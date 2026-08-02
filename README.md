@@ -6,7 +6,12 @@ down to the games you actually want to play instead of scrolling past the rest.
 
 > Unofficial community project. Not built, endorsed or supported by Autodarts.
 
-<!-- TODO: add a screenshot of the filter bar -->
+## Screenshots
+
+![Simple View](/images/lobby_x01_simple_view.png)
+
+![Extended View](/images/lobby_x01_detail_view.png)
+
 
 ## What it does
 
